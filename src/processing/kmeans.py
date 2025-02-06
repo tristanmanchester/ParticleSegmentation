@@ -16,8 +16,8 @@ def perform_kmeans_clustering(
     n_clusters: int = 3,
     target_cluster: int = 0,
     random_seed: int = None,
-    use_gpu: bool = True
-) -> Union[np.ndarray, cp.ndarray]:
+    use_gpu: bool = False  # Deprecated, K-means is CPU-only
+) -> np.ndarray:
     """Perform K-means clustering on the input data.
 
     Args:
@@ -25,51 +25,40 @@ def perform_kmeans_clustering(
         n_clusters: Number of clusters for K-means
         target_cluster: Index of cluster to select (0 = darkest)
         random_seed: Random seed for reproducibility
-        use_gpu: Whether to use GPU acceleration
+        use_gpu: Deprecated, K-means is CPU-only
 
     Returns:
-        Binary mask of selected cluster
+        Binary mask of selected cluster (numpy array)
     """
-    try:
-        # Report initial memory usage
-        if use_gpu:
-            report_gpu_memory("Start K-means")
-        
-        # Reshape to 2D array for clustering
-        original_shape = data.shape
-        if isinstance(data, cp.ndarray):
-            flattened = to_cpu(data.reshape(-1, 1))
-        else:
-            flattened = data.reshape(-1, 1)
-
-        # Initialize and fit KMeans
-        kmeans = KMeans(
-            n_clusters=n_clusters,
-            random_state=random_seed,
-            n_init=10
-        )
-        
-        logging.info("Fitting K-means clustering model...")
-        cluster_labels = kmeans.fit_predict(flattened)
-        
-        # Sort clusters by intensity
-        cluster_means = [np.mean(flattened[cluster_labels == i]) for i in range(n_clusters)]
-        sorted_indices = np.argsort(cluster_means)
-        
-        # Create binary mask for target cluster
-        mask = (cluster_labels == sorted_indices[target_cluster]).reshape(original_shape)
-        
-        # Convert to GPU if needed
-        if use_gpu:
-            mask = to_gpu(mask)
-            report_gpu_memory("K-means complete")
-        
-        return mask
-        
-    except Exception as e:
-        logging.error(f"Error during K-means clustering: {str(e)}")
-        raise
+    if use_gpu:
+        logging.warning("GPU flag is deprecated for K-means, using CPU implementation")
     
-    finally:
-        if use_gpu:
-            clear_gpu_memory()
+    # Ensure data is on CPU and correct shape
+    original_shape = data.shape
+    if isinstance(data, cp.ndarray):
+        data = cp.asnumpy(data)
+    flattened = data.reshape(-1, 1)
+    
+    # Initialize and fit KMeans
+    logging.info(f"Fitting K-means with {n_clusters} clusters...")
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_seed,
+        n_init=10
+    )
+    
+    # Fit on data
+    kmeans.fit(flattened)
+    
+    # Get cluster assignments
+    labels = kmeans.labels_
+    
+    # Sort clusters by intensity (ascending)
+    cluster_centers = kmeans.cluster_centers_.flatten()
+    sorted_indices = np.argsort(cluster_centers)
+    
+    # Create binary mask for target cluster
+    binary_mask = (labels == sorted_indices[target_cluster]).reshape(original_shape)
+    
+    logging.info(f"Created binary mask with {np.sum(binary_mask)} positive pixels")
+    return binary_mask.astype(np.uint8)

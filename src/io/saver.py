@@ -40,9 +40,9 @@ def save_tiff_stack(
     if not isinstance(data, np.ndarray) or data.ndim != 3:
         raise ValueError("Data must be a 3D numpy array")
     
-    # Ensure uint16 for label maps
-    if 'label' in filename.lower() and data.dtype != np.uint16:
-        data = data.astype(np.uint16)
+    # Ensure int32 for label maps
+    if 'label' in filename.lower() and data.dtype != np.int32:
+        data = data.astype(np.int32)
     
     # Construct output path
     output_file = output_path / f"{filename}.tiff"

@@ -2,21 +2,40 @@
 
 from typing import Union, Dict, Tuple
 from pathlib import Path
+import logging
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import cupy as cp
 from scipy import ndimage as ndi
+from tqdm import tqdm
+
+
+def _calculate_volume_chunk(args):
+    """Helper function for parallel volume calculation.
+    
+    Args:
+        args: Tuple of (labels, label_chunk)
+        
+    Returns:
+        List of (label, volume) tuples
+    """
+    labels, label_chunk = args
+    return [(label, np.sum(labels == label)) for label in label_chunk]
 
 
 def calculate_particle_statistics(
     labels: Union[np.ndarray, cp.ndarray],
-    pixel_size: float
+    pixel_size: float,
+    n_jobs: int = -1
 ) -> Dict[str, Union[np.ndarray, float]]:
     """Calculate statistics for segmented particles.
 
     Args:
         labels: Label map from watershed segmentation
         pixel_size: Size of each pixel in microns
+        n_jobs: Number of processes for parallel computation. -1 means use all cores.
 
     Returns:
         Dictionary containing:
@@ -31,15 +50,20 @@ def calculate_particle_statistics(
     Raises:
         ValueError: If label map is invalid
     """
+    logging.info("Starting particle statistics calculation...")
+    start_time = time.time()
+    
     # Move data to CPU if needed
     if isinstance(labels, cp.ndarray):
+        logging.info("Moving data to CPU...")
         labels = cp.asnumpy(labels)
     
     # Validate input
-    if labels.dtype != np.uint16:
-        raise ValueError("Label map must be uint16")
+    if labels.dtype != np.int32:
+        raise ValueError("Label map must be int32")
     
     # Get unique labels (excluding background)
+    logging.info("Finding unique particle labels...")
     unique_labels = np.unique(labels)
     if unique_labels[0] == 0:
         unique_labels = unique_labels[1:]
@@ -47,24 +71,64 @@ def calculate_particle_statistics(
     if len(unique_labels) == 0:
         raise ValueError("No particles found in label map")
     
-    # Calculate volumes for each particle
-    volumes = np.array([np.sum(labels == label) for label in unique_labels])
+    n_particles = len(unique_labels)
+    logging.info(f"Found {n_particles} particles")
     
-    # Calculate equivalent spherical diameters
+    # Try vectorized approach first for small to medium datasets
+    if n_particles < 1000:
+        logging.info("Using vectorized volume calculation...")
+        volumes = np.array([np.sum(labels == label) for label in tqdm(unique_labels, desc="Processing particles")])
+    else:
+        # For large datasets, use parallel processing
+        logging.info("Using parallel volume calculation...")
+        import multiprocessing
+        if n_jobs == -1:
+            n_jobs = multiprocessing.cpu_count()
+        
+        # Split labels into chunks for parallel processing
+        chunk_size = max(1, n_particles // (n_jobs * 4))  # Smaller chunks for better load balancing
+        label_chunks = [unique_labels[i:i + chunk_size] for i in range(0, n_particles, chunk_size)]
+        
+        volumes_dict = {}
+        with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+            futures = []
+            for chunk in label_chunks:
+                futures.append(executor.submit(_calculate_volume_chunk, (labels, chunk)))
+            
+            # Process results as they complete
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Processing chunks"):
+                for label, volume in future.result():
+                    volumes_dict[label] = volume
+        
+        # Convert dictionary to array in the correct order
+        volumes = np.array([volumes_dict[label] for label in unique_labels])
+    
+    processing_time = time.time() - start_time
+    logging.info(f"Volume calculation completed in {processing_time:.2f}s")
+    
+    # Calculate equivalent spherical diameters (in pixels)
+    logging.info("Calculating equivalent diameters...")
     equivalent_diameters = 2 * np.power(3 * volumes / (4 * np.pi), 1/3)
     
-    # Convert to microns for statistics
+    # Convert diameters to microns for statistics
     diameters_microns = equivalent_diameters * pixel_size
     
+    # Calculate summary statistics
+    logging.info("Computing summary statistics...")
     stats = {
-        'equivalent_diameters': equivalent_diameters,  # in pixels
-        'volumes': volumes,  # in pixels^3
+        'equivalent_diameters': equivalent_diameters,
+        'volumes': volumes,
         'count': len(unique_labels),
-        'mean_diameter': np.mean(diameters_microns),  # in microns
-        'std_diameter': np.std(diameters_microns),  # in microns
-        'min_diameter': np.min(diameters_microns),  # in microns
-        'max_diameter': np.max(diameters_microns)  # in microns
+        'mean_diameter': np.mean(diameters_microns),
+        'std_diameter': np.std(diameters_microns),
+        'min_diameter': np.min(diameters_microns),
+        'max_diameter': np.max(diameters_microns)
     }
+    
+    logging.info(f"Statistics summary:")
+    logging.info(f"  - Particle count: {stats['count']}")
+    logging.info(f"  - Mean diameter: {stats['mean_diameter']:.2f} µm")
+    logging.info(f"  - Size range: {stats['min_diameter']:.2f} - {stats['max_diameter']:.2f} µm")
     
     return stats
 

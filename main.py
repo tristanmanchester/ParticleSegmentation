@@ -21,7 +21,7 @@ from src.visualization import (
     plot_size_distribution,
     calculate_particle_statistics
 )
-from src.utils.gpu_utils import report_gpu_memory, clear_gpu_memory
+from src.utils.gpu_utils import report_gpu_memory, clear_gpu_memory, to_gpu, to_cpu
 from src.utils.timing import Timer, timed_stage
 
 
@@ -58,7 +58,7 @@ def main():
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
-        kernel_size=3
+        kernel_size=5
     )
     
     # Create output directory
@@ -83,12 +83,6 @@ def main():
                 raise ValueError("No data loaded")
             logging.info(f"Loaded data shape: {data.shape}")
         
-        # Move data to GPU if available
-        if config.use_gpu:
-            with timed_stage(timer, "GPU Transfer"):
-                data = cp.asarray(data)
-                report_gpu_memory("After data transfer")
-        
         # K-means clustering
         with timed_stage(timer, "K-means Clustering"):
             logging.info("Performing K-means clustering")
@@ -102,6 +96,8 @@ def main():
         # Morphological operations
         with timed_stage(timer, "Morphological Operations"):
             logging.info("Applying morphological operations")
+            if config.use_gpu:
+                binary_mask = to_gpu(binary_mask)
             # Calculate kernel size based on binning factor if not provided
             kernel_size = config.kernel_size if config.kernel_size is not None else 3 * config.binning_factor
             binary_mask = apply_morphological_operations(
@@ -109,6 +105,9 @@ def main():
                 kernel_size=kernel_size,
                 use_gpu=config.use_gpu
             )
+            if config.use_gpu:
+                binary_mask = to_cpu(binary_mask)
+                clear_gpu_memory()
         
         # Calculate minimum distance for watershed
         min_distance = calculate_min_distance(

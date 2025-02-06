@@ -107,7 +107,7 @@ def perform_watershed_segmentation(
     binary_mask: Union[np.ndarray, cp.ndarray],
     min_distance: int,
     pixel_size: float,
-    use_gpu: bool = True,
+    use_gpu: bool = False,  # Deprecated, watershed is CPU-only
     timer: Timer = None
 ) -> np.ndarray:
     """Perform watershed segmentation on the binary mask.
@@ -116,7 +116,7 @@ def perform_watershed_segmentation(
         binary_mask: Processed binary mask
         min_distance: Minimum distance between particles in pixels
         pixel_size: Size of each pixel in microns
-        use_gpu: Whether to use GPU acceleration (Note: watershed is CPU-only)
+        use_gpu: Deprecated, watershed is CPU-only
         timer: Optional Timer instance for performance tracking
 
     Returns:
@@ -125,6 +125,9 @@ def perform_watershed_segmentation(
     Raises:
         ValueError: If input parameters are invalid
     """
+    if use_gpu:
+        logging.warning("GPU flag is deprecated for watershed, using CPU implementation")
+    
     try:
         # Report initial GPU memory usage
         if use_gpu:
@@ -147,64 +150,45 @@ def perform_watershed_segmentation(
             clear_gpu_memory()
             report_gpu_memory("After CPU transfer")
         
-        # Find local maxima (particle centers)
-        with timed_stage(timer, "Peak Detection") if timer else nullcontext():
-            coordinates = peak_local_max(
+        # Watershed segmentation
+        with timed_stage(timer, "Watershed Transform") if timer else nullcontext():
+            # Find local maxima for markers
+            local_max = peak_local_max(
                 distance_cpu,
                 min_distance=min_distance,
                 labels=binary_mask_cpu
             )
-        
-        if len(coordinates) == 0:
-            raise ValueError(
-                f"No particle centers found. Try reducing min_distance "
-                f"(currently {min_distance} pixels)"
-            )
-        
-        print(f"\nFound {len(coordinates)} potential particle centers")
-        
-        # Create markers for watershed
-        with timed_stage(timer, "Marker Creation") if timer else nullcontext():
-            markers = np.zeros_like(binary_mask_cpu, dtype=np.uint16)
-            markers[tuple(coordinates.T)] = np.arange(1, len(coordinates) + 1)
-        
-        # Perform watershed segmentation with progress bar
-        with timed_stage(timer, "Watershed") if timer else nullcontext():
-            print("\nPerforming watershed segmentation...")
             
-            # Initialize progress bar
-            total_slices = binary_mask_cpu.shape[0]
-            progress_bar = tqdm(
-                total=total_slices,
-                desc="Processing slices",
-                unit="slice"
-            )
+            # Create markers for watershed
+            markers = np.zeros_like(binary_mask_cpu, dtype=np.int32)
+            markers[tuple(local_max.T)] = np.arange(1, len(local_max) + 1)
             
-            # Process each slice
-            labels = watershed(
-                -distance_cpu,
-                markers,
-                mask=binary_mask_cpu
-            )
+            # Perform watershed
+            labels = watershed(-distance_cpu, markers, mask=binary_mask_cpu)
             
-            # Update progress bar for each slice
-            for _ in range(total_slices):
-                progress_bar.update(1)
+            # Ensure int32 dtype
+            labels = labels.astype(np.int32)
             
-            progress_bar.close()
+            if use_gpu:
+                # Move back to GPU if needed
+                labels = to_gpu(labels)
         
         # Validate results
         final_labels = np.unique(labels)
         if len(final_labels) <= 1:
-            raise ValueError("Watershed segmentation failed: no particles found")
+            raise ValueError("No particles were segmented")
         
-        print(f"Successfully segmented {len(final_labels) - 1} particles")
+        n_particles = len(final_labels) - 1  # Subtract 1 for background
+        logging.info(f"Successfully segmented {n_particles} particles")
         
-        # Move result back to GPU if needed
-        if use_gpu:
-            with timed_stage(timer, "GPU Transfer") if timer else nullcontext():
-                labels = to_gpu(labels)
-                report_gpu_memory("End watershed")
+        # Check if we're approaching int32 limit
+        if n_particles > 0.9 * np.iinfo(np.int32).max:
+            logging.warning(
+                f"Number of particles ({n_particles}) is approaching int32 limit. "
+                "Consider processing the data in smaller chunks."
+            )
+        
+        print(f"Successfully segmented {n_particles} particles")
         
         return labels
     
