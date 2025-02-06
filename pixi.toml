@@ -1,0 +1,20 @@
+[project]
+channels = ["conda-forge"]
+description = "Add a short description here"
+name = "ParticleSegmentation"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+numpy = ">=2.2.2,<3"
+cupy = ">=13.3.0,<14"
+scikit-learn = ">=1.6.1,<2"
+cuda = ">=12.8.0,<13"
+rapids = ">=0.0.1,<0.0.2"
+scipy = ">=1.15.1,<2"
+tifffile = ">=2025.1.10,<2026"
+matplotlib = ">=3.10.0,<4"
+tqdm = ">=4.67.1,<5"
+python = ">=3.12.8,<3.13"
