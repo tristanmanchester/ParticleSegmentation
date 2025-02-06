@@ -81,11 +81,11 @@ def plot_orthogonal_views(
     # Adjust layout and save
     plt.tight_layout()
     output_path = Path(output_path)
-    output_file = output_path / 'orthogonal_views.png'
-    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
     plt.close()
     
-    return output_file
+    return output_path
 
 
 def plot_size_distribution(
@@ -120,8 +120,8 @@ def plot_size_distribution(
     
     # Save figure
     output_path = Path(output_path)
-    output_file = output_path / 'size_distribution.png'
-    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
     plt.close()
     
-    return output_file
+    return output_path

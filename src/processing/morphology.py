@@ -27,7 +27,12 @@ def apply_morphological_operations(
         ValueError: If mask is not binary or kernel size is invalid
     """
     # Validate input
-    if not set(np.unique(mask)).issubset({0, 1}):
+    if isinstance(mask, cp.ndarray):
+        unique_values = cp.unique(mask)
+    else:
+        unique_values = np.unique(mask)
+    
+    if not all(x in [0, 1] for x in unique_values):
         raise ValueError("Input mask must be binary (0s and 1s only)")
     
     if kernel_size < 1:

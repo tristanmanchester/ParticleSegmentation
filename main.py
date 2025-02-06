@@ -1,6 +1,6 @@
 """Main entry point for the particle segmentation pipeline."""
 
-import argparse
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from src.config import Config
 from src.io import load_tiff_stack, save_tiff_stack
+from src.io.loader import is_binary_mask
 from src.processing import (
     perform_kmeans_clustering,
     apply_morphological_operations,
@@ -20,130 +21,94 @@ from src.visualization import (
     plot_size_distribution,
     calculate_particle_statistics
 )
+from src.utils.gpu_utils import report_gpu_memory, clear_gpu_memory
+from src.utils.timing import Timer, timed_stage
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Segment NMC cathode particles from X-ray tomography data"
-    )
+def setup_logging() -> None:
+    """Configure logging settings."""
+    format_str = '%(asctime)s - %(levelname)s - %(message)s'
     
-    parser.add_argument(
-        "--input_path",
-        type=str,
-        required=True,
-        help="Path to input TIFF stack or directory"
+    logging.basicConfig(
+        level=logging.INFO,
+        format=format_str,
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('particle_segmentation.log')
+        ]
     )
-    
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        required=True,
-        help="Path to output directory"
-    )
-    
-    parser.add_argument(
-        "--pixel_size",
-        type=float,
-        required=True,
-        help="Pixel size in microns"
-    )
-    
-    parser.add_argument(
-        "--min_particle_size",
-        type=float,
-        default=1.0,
-        help="Minimum particle size in microns"
-    )
-    
-    parser.add_argument(
-        "--max_particle_size",
-        type=float,
-        default=50.0,
-        help="Maximum particle size in microns"
-    )
-    
-    parser.add_argument(
-        "--binning_factor",
-        type=int,
-        default=1,
-        help="Binning factor for downsampling"
-    )
-    
-    parser.add_argument(
-        "--n_clusters",
-        type=int,
-        default=3,
-        help="Number of clusters for K-means"
-    )
-    
-    parser.add_argument(
-        "--target_cluster",
-        type=int,
-        default=0,
-        help="Target cluster index (0 = darkest)"
-    )
-    
-    parser.add_argument(
-        "--random_seed",
-        type=int,
-        default=None,
-        help="Random seed for reproducibility"
-    )
-    
-    parser.add_argument(
-        "--no_gpu",
-        action="store_true",
-        help="Disable GPU acceleration"
-    )
-    
-    return parser.parse_args()
 
 
 def main():
     """Main execution function."""
-    # Parse arguments
-    args = parse_args()
+    # Configure logging
+    setup_logging()
     
-    # Create configuration
+    # Configuration
+    input_path = Path("data/k11-52548_subvolume/subvolumes")
+    output_path = Path("output")
+    use_gpu = True
+    
     config = Config(
-        input_path=args.input_path,
-        output_path=args.output_path,
-        pixel_size=args.pixel_size,
-        particle_size_range=(args.min_particle_size, args.max_particle_size),
-        binning_factor=args.binning_factor,
-        n_clusters=args.n_clusters,
-        target_cluster=args.target_cluster,
-        random_seed=args.random_seed,
-        use_gpu=not args.no_gpu
+        input_path=input_path,
+        output_path=output_path,
+        pixel_size=0.54,  # microns
+        particle_size_range=(5.0, 30.0),  # microns
+        binning_factor=4,
+        n_clusters=3,
+        target_cluster=0,  # 0 = darkest
+        use_gpu=use_gpu,
+        kernel_size=3
     )
     
+    # Create output directory
+    config.output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize timer for performance tracking
+    timer = Timer()
+    
     try:
+        timer.start("Total Pipeline")
+        
         # Load data
-        print("\nLoading TIFF stack...")
-        data = load_tiff_stack(
-            config.input_path,
-            use_gpu=config.use_gpu,
-            validate=True
-        )
+        with timed_stage(timer, "Data Loading"):
+            logging.info(f"Loading data from {config.input_path}")
+            data = load_tiff_stack(
+                config.input_path,
+                use_gpu=config.use_gpu,
+                validate=True,
+                binning_factor=config.binning_factor
+            )
+            if data is None:
+                raise ValueError("No data loaded")
+            logging.info(f"Loaded data shape: {data.shape}")
         
-        # Perform K-means clustering
-        print("\nPerforming K-means clustering...")
-        binary_mask = perform_kmeans_clustering(
-            data,
-            n_clusters=config.n_clusters,
-            target_cluster=config.target_cluster,
-            random_seed=config.random_seed,
-            use_gpu=config.use_gpu
-        )
+        # Move data to GPU if available
+        if config.use_gpu:
+            with timed_stage(timer, "GPU Transfer"):
+                data = cp.asarray(data)
+                report_gpu_memory("After data transfer")
         
-        # Apply morphological operations
-        print("\nApplying morphological operations...")
-        processed_mask = apply_morphological_operations(
-            binary_mask,
-            kernel_size=config.kernel_size,
-            use_gpu=config.use_gpu
-        )
+        # K-means clustering
+        with timed_stage(timer, "K-means Clustering"):
+            logging.info("Performing K-means clustering")
+            binary_mask = perform_kmeans_clustering(
+                data,
+                n_clusters=config.n_clusters,
+                target_cluster=config.target_cluster,
+                use_gpu=config.use_gpu
+            )
+        
+        # Morphological operations
+        with timed_stage(timer, "Morphological Operations"):
+            logging.info("Applying morphological operations")
+            # Calculate kernel size based on binning factor if not provided
+            kernel_size = config.kernel_size if config.kernel_size is not None else 3 * config.binning_factor
+            binary_mask = apply_morphological_operations(
+                binary_mask,
+                kernel_size=kernel_size,
+                use_gpu=config.use_gpu
+            )
         
         # Calculate minimum distance for watershed
         min_distance = calculate_min_distance(
@@ -151,42 +116,79 @@ def main():
             config.pixel_size
         )
         
-        # Perform watershed segmentation
-        print("\nPerforming watershed segmentation...")
-        labels = perform_watershed_segmentation(
-            processed_mask,
-            min_distance=min_distance,
-            pixel_size=config.pixel_size,
-            use_gpu=config.use_gpu
-        )
+        # Watershed segmentation
+        with timed_stage(timer, "Watershed Segmentation"):
+            logging.info("Performing watershed segmentation")
+            labels = perform_watershed_segmentation(
+                binary_mask,
+                min_distance=min_distance,
+                pixel_size=config.pixel_size,
+                use_gpu=config.use_gpu,
+                timer=timer
+            )
         
-        # Save intermediate results
-        print("\nSaving results...")
-        save_tiff_stack(binary_mask, config.output_path, "binary_mask")
-        save_tiff_stack(processed_mask, config.output_path, "processed_mask")
-        save_tiff_stack(labels, config.output_path, "particle_labels")
+        # Save results
+        with timed_stage(timer, "Saving Results"):
+            logging.info("Saving results")
+            # Save segmented particles
+            save_tiff_stack(
+                data=labels,
+                output_path=config.output_path,
+                filename="segmented_particles"
+            )
+            
+            # Generate and save visualizations
+            plot_orthogonal_views(
+                raw_data=data,
+                binary_mask=binary_mask,
+                labels=labels,
+                output_path=str(config.output_path / "orthogonal_views.png")
+            )
+            
+            # Plot size distribution using particle statistics
+            stats = calculate_particle_statistics(labels, config.pixel_size)
+            plot_size_distribution(
+                diameters=stats['equivalent_diameters'],
+                pixel_size=config.pixel_size,
+                output_path=str(config.output_path / "size_distribution.png")
+            )
+            
+            # Save statistics
+            import pandas as pd
+            # Convert arrays to lists for better CSV formatting
+            stats_df = pd.DataFrame({
+                'equivalent_diameters': stats['equivalent_diameters'].tolist(),
+                'volumes': stats['volumes'].tolist()
+            })
+            # Add summary statistics as a separate CSV
+            summary_stats = {
+                'count': len(stats['equivalent_diameters']),
+                'mean_diameter': stats['mean_diameter'],
+                'std_diameter': stats['std_diameter'],
+                'min_diameter': stats['min_diameter'],
+                'max_diameter': stats['max_diameter']
+            }
+            pd.DataFrame([summary_stats]).to_csv(
+                str(config.output_path / "summary_statistics.csv"),
+                index=False
+            )
+            # Save detailed particle measurements
+            stats_df.to_csv(
+                str(config.output_path / "particle_measurements.csv"),
+                index=False
+            )
         
-        # Calculate and save statistics
-        print("\nCalculating particle statistics...")
-        stats = calculate_particle_statistics(labels, config.pixel_size)
-        
-        # Generate visualizations
-        print("\nGenerating visualizations...")
-        plot_orthogonal_views(
-            data, binary_mask, labels,
-            config.output_path
-        )
-        plot_size_distribution(
-            stats['equivalent_diameters'],
-            config.pixel_size,
-            config.output_path
-        )
-        
-        print("\nProcessing complete! Results saved to:", config.output_path)
-        
+        timer.stop("Total Pipeline")
+        logging.info("Pipeline completed successfully")
+        logging.info(f"\nPerformance Summary:\n{timer.get_summary()}")
+    
     except Exception as e:
-        print(f"\nError: {str(e)}")
+        logging.error(f"Pipeline failed: {str(e)}", exc_info=True)
         raise
+    
+    finally:
+        if config.use_gpu:
+            clear_gpu_memory()
 
 
 if __name__ == "__main__":
