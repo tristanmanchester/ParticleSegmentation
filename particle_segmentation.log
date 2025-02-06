@@ -509,3 +509,71 @@ Saving Results                       0.61        1.27        0.12        0.10
 2025-02-06 13:09:01,582 - INFO - Completed Morphological Operations in 0.96s
 2025-02-06 13:09:01,583 - INFO - Performing watershed segmentation
 2025-02-06 13:09:01,583 - WARNING - GPU flag is deprecated for watershed, using CPU implementation
+2025-02-06 13:20:00,785 - INFO - Completed Mask Validation in 659.20s
+2025-02-06 13:20:08,953 - INFO - Completed CPU Distance Transform in 8.16s
+2025-02-06 13:20:09,285 - INFO - Completed CPU Transfer in 0.08s
+2025-02-06 13:20:29,693 - INFO - Completed Watershed Transform in 20.41s
+2025-02-06 13:20:29,883 - INFO - Successfully segmented 45276 particles
+2025-02-06 13:20:29,903 - INFO - Completed Watershed Segmentation in 688.32s
+2025-02-06 13:20:29,903 - INFO - Saving results
+2025-02-06 13:20:30,073 - INFO - Generating orthogonal views visualization...
+2025-02-06 13:20:30,074 - INFO - Moving raw data to CPU...
+2025-02-06 13:20:30,085 - INFO - Moving labels to CPU...
+2025-02-06 13:20:30,134 - INFO - Creating figure with 3x3 grid...
+2025-02-06 13:20:30,951 - INFO - Plotting XY slices...
+2025-02-06 13:20:30,954 - INFO - Plotting XZ slices...
+2025-02-06 13:20:30,954 - INFO - Plotting YZ slices...
+2025-02-06 13:20:30,959 - INFO - Adjusting layout and saving figure...
+2025-02-06 13:20:34,032 - INFO - Saved orthogonal views to output\orthogonal_views.png
+2025-02-06 13:20:34,042 - INFO - Starting particle statistics calculation...
+2025-02-06 13:20:34,042 - INFO - Moving data to CPU...
+2025-02-06 13:20:34,109 - INFO - Finding unique particle labels...
+2025-02-06 13:20:34,419 - INFO - Found 45276 particles
+2025-02-06 13:20:34,420 - INFO - Using parallel volume calculation...
+2025-02-06 13:29:10,273 - INFO - Volume calculation completed in 516.23s
+2025-02-06 13:29:10,274 - INFO - Calculating equivalent diameters...
+2025-02-06 13:29:10,276 - INFO - Computing summary statistics...
+2025-02-06 13:29:10,277 - INFO - Statistics summary:
+2025-02-06 13:29:10,277 - INFO -   - Particle count: 45276
+2025-02-06 13:29:10,278 - INFO -   - Mean diameter: 3.10 µm
+2025-02-06 13:29:10,279 - INFO -   - Size range: 1.72 - 8.91 µm
+2025-02-06 13:29:10,302 - INFO - Generating size distribution plot...
+2025-02-06 13:29:10,346 - INFO - Creating histogram...
+2025-02-06 13:29:10,386 - INFO - Adding statistical markers...
+2025-02-06 13:29:10,399 - INFO - Saving figure...
+2025-02-06 13:29:10,795 - INFO - Saved size distribution plot to output\size_distribution.png
+2025-02-06 13:29:10,908 - INFO - Completed Saving Results in 521.00s
+2025-02-06 13:29:10,909 - INFO - Pipeline completed successfully
+2025-02-06 13:29:10,909 - INFO - 
+Performance Summary:
+Timing Summary:
+------------------------------------------------------------
+Stage                          Duration        Percentage     
+------------------------------------------------------------
+Data Loading                    27.65s           0.8%
+K-means Clustering              97.66s           2.9%
+Morphological Operations         0.96s           0.0%
+Mask Validation                659.20s          19.6%
+CPU Distance Transform           8.16s           0.2%
+CPU Transfer                     0.08s           0.0%
+Watershed Transform             20.41s           0.6%
+Watershed Segmentation         688.32s          20.5%
+Saving Results                 521.00s          15.5%
+Total Pipeline                 1335.59s          39.8%
+------------------------------------------------------------
+Total                          3359.04s
+
+Memory Usage Summary (GB):
+--------------------------------------------------------------------------------
+Stage                          Peak RSS     Peak VMS     RSS Change   VMS Change  
+--------------------------------------------------------------------------------
+Total Pipeline                       0.62        2.08        0.44        1.94
+Data Loading                         0.34        0.48        0.16        0.34
+K-means Clustering                   0.39        0.53        0.05        0.05
+Morphological Operations             0.39        0.71        0.00        0.19
+Watershed Segmentation               0.65        1.99        0.26        1.27
+Mask Validation                      0.59        0.72        0.20        0.01
+CPU Distance Transform               0.79        0.92        0.40        0.40
+CPU Transfer                         1.29        1.82        0.40        0.40
+Watershed Transform                  1.29        1.98       -0.04        0.16
+Saving Results                       0.65        2.08       -0.03        0.10

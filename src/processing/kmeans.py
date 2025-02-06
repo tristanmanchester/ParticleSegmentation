@@ -4,6 +4,8 @@ from typing import Union, Tuple, List
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+import os
+import platform
 
 import numpy as np
 import cupy as cp
@@ -24,16 +26,25 @@ def _process_chunk(args: Tuple) -> Tuple[np.ndarray, np.ndarray, slice]:
     Returns:
         Tuple of (binary mask, cluster centers, chunk slice)
     """
+    # Limit threads for BLAS and OpenMP within each process
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['OMP_NUM_THREADS'] = '1'
+    
     chunk, n_clusters, random_seed, chunk_slice = args
     
     # Reshape to 2D
     chunk_flat = chunk.reshape(-1, 1)
     
+    # Calculate safe batch size (minimum 6144 on Windows with MKL to prevent memory leak)
+    min_batch_size = 6144 if platform.system() == 'Windows' else 1000
+    batch_size = max(min_batch_size, min(len(chunk_flat) // 10, 10000))
+    
     # Use MiniBatchKMeans for better memory efficiency
     kmeans = MiniBatchKMeans(
         n_clusters=n_clusters,
         random_state=random_seed,
-        batch_size=min(1000, len(chunk_flat)),
+        batch_size=batch_size,
         n_init=3
     )
     
@@ -97,18 +108,27 @@ def perform_kmeans_clustering(
     if isinstance(data, cp.ndarray):
         data = cp.asnumpy(data)
     
-    # Determine number of processes
+    # Determine optimal number of processes based on system
     if n_jobs == -1:
         n_jobs = multiprocessing.cpu_count()
     
-    # Split data into chunks
-    n_chunks = n_jobs * 2  # Use more chunks than processes for better load balancing
-    chunk_slices = split_volume(data.shape, n_chunks)
+    # Limit maximum number of processes to avoid resource exhaustion
+    max_processes = 16  # Reasonable limit for most systems
+    n_jobs = min(n_jobs, max_processes)
     
+    # Calculate number of chunks based on data size and available processes
+    # Aim for chunks of reasonable size (about 100MB each)
+    chunk_size_target = 100 * 1024 * 1024  # 100MB in bytes
+    total_size = data.nbytes
+    n_chunks = min(max(4, total_size // chunk_size_target), n_jobs * 2)
+    
+    chunk_slices = split_volume(data.shape, n_chunks)
     logging.info(f"Processing data in {len(chunk_slices)} chunks using {n_jobs} processes...")
     
     # Process chunks in parallel
-    results = []
+    binary_mask = np.zeros_like(data, dtype=np.uint8)
+    all_centers = []
+    
     with ProcessPoolExecutor(max_workers=n_jobs) as executor:
         # Submit all chunks for processing
         futures = []
@@ -122,9 +142,6 @@ def perform_kmeans_clustering(
             )
         
         # Process results as they complete
-        binary_mask = np.zeros_like(data, dtype=np.uint8)
-        all_centers = []
-        
         for future in tqdm(as_completed(futures), total=len(futures), desc="Processing chunks"):
             chunk_mask, centers, chunk_slice = future.result()
             binary_mask[chunk_slice] = chunk_mask
