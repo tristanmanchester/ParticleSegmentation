@@ -58,7 +58,7 @@ def main():
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
-        kernel_size=5
+        kernel_size=4
     )
     
     # Create output directory
@@ -85,12 +85,13 @@ def main():
         
         # K-means clustering
         with timed_stage(timer, "K-means Clustering"):
-            logging.info("Performing K-means clustering")
+            logging.info("Performing K-means clustering...")
             binary_mask = perform_kmeans_clustering(
                 data,
                 n_clusters=config.n_clusters,
                 target_cluster=config.target_cluster,
-                use_gpu=config.use_gpu
+                use_gpu=False,  # K-means is CPU-only
+                n_jobs=-1  # Use all CPU cores
             )
         
         # Morphological operations
