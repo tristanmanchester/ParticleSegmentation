@@ -45,7 +45,7 @@ def main():
     setup_logging()
     
     # Configuration
-    input_path = Path("data/k11-52548_subvolume/subvolumes")
+    input_path = Path("data/subvolumes")
     output_path = Path("output")
     use_gpu = True
     
@@ -54,7 +54,7 @@ def main():
         output_path=output_path,
         pixel_size=0.54,  # microns
         particle_size_range=(5.0, 30.0),  # microns
-        binning_factor=8,
+        binning_factor=2,
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
@@ -89,9 +89,7 @@ def main():
             binary_mask = perform_kmeans_clustering(
                 data,
                 n_clusters=config.n_clusters,
-                target_cluster=config.target_cluster,
-                use_gpu=False,  # K-means is CPU-only
-                n_jobs=-1  # Use all CPU cores
+                target_cluster=config.target_cluster
             )
         
         # Morphological operations
