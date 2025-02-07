@@ -122,14 +122,8 @@ def perform_watershed_segmentation(
     Raises:
         ValueError: If input parameters are invalid
     """
-    if use_gpu:
-        logging.warning("GPU flag is deprecated for watershed, using CPU implementation")
     
     try:
-        # Report initial GPU memory usage
-        if use_gpu:
-            report_gpu_memory("Start watershed")
-        
         # Validate binary mask
         validate_binary_mask(binary_mask, timer)
         

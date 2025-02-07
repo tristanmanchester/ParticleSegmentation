@@ -35,6 +35,10 @@ def perform_kmeans_clustering(
         # Reshape to 2D for clustering
         data_flat = data.reshape(-1, 1)
         
+        # Set environment variable OMP_NUM_THREADS=16
+        import os
+        os.environ["OMP_NUM_THREADS"] = "16"
+        
         # Initialize and run MiniBatchKMeans
         kmeans = MiniBatchKMeans(
             n_clusters=n_clusters,
