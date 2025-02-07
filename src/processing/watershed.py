@@ -69,37 +69,34 @@ def validate_binary_mask(
         ValueError: If mask is invalid
     """
     with timed_stage(timer, "Mask Validation") if timer else nullcontext():
-        # Convert to numpy if needed
-        if isinstance(mask, cp.ndarray):
-            mask = to_cpu(mask)
+        # Use GPU if available
+        if isinstance(mask, np.ndarray):
+            xp = np
+        else:
+            xp = cp
         
-        # Check if binary
-        unique_values = np.unique(mask)
-        if not set(unique_values) <= {0, 1}:
+        # Check if binary using unique values
+        unique_values = xp.unique(mask)
+        if not set(unique_values.get() if isinstance(unique_values, cp.ndarray) else unique_values) <= {0, 1}:
             raise ValueError(
                 "Input mask must be binary (0s and 1s only). "
                 f"Found values: {sorted(unique_values)}"
             )
         
-        # Check if empty
-        if not np.any(mask):
+        # Quick check for empty or full mask
+        mask_sum = xp.sum(mask)
+        if isinstance(mask_sum, cp.ndarray):
+            mask_sum = mask_sum.item()
+        
+        if mask_sum == 0:
             raise ValueError("Binary mask is empty (all zeros)")
         
-        # Check if all ones
-        if np.all(mask):
+        if mask_sum == mask.size:
             raise ValueError("Binary mask is full (all ones)")
         
-        # Check for isolated pixels
-        structure = np.ones((3, 3, 3))
-        labeled, num_features = ndi.label(mask, structure=structure)
-        if num_features == 0:
-            raise ValueError("No connected components found in binary mask")
-        
-        # Warn about potentially problematic features
-        volumes = np.array([np.sum(labeled == i) for i in range(1, num_features + 1)])
-        small_particles = np.sum(volumes < 27)  # 3x3x3 cube
-        if small_particles > 0:
-            print(f"\nWarning: Found {small_particles} particles smaller than 3x3x3 voxels")
+        # Basic sanity check on mask size
+        if mask_sum < 27:  # Minimum size of 3x3x3
+            logging.warning("Binary mask contains very few positive pixels")
 
 
 @log_execution_time

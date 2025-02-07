@@ -54,11 +54,11 @@ def main():
         output_path=output_path,
         pixel_size=0.54,  # microns
         particle_size_range=(5.0, 30.0),  # microns
-        binning_factor=4,
+        binning_factor=8,
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
-        kernel_size=4
+        kernel_size=1
     )
     
     # Create output directory
@@ -106,9 +106,6 @@ def main():
                 kernel_size=kernel_size,
                 use_gpu=config.use_gpu
             )
-            if config.use_gpu:
-                binary_mask = to_cpu(binary_mask)
-                clear_gpu_memory()
         
         # Calculate minimum distance for watershed
         min_distance = calculate_min_distance(
@@ -126,6 +123,12 @@ def main():
                 use_gpu=config.use_gpu,
                 timer=timer
             )
+            
+            # Move data back to CPU after watershed
+            if config.use_gpu:
+                binary_mask = to_cpu(binary_mask)
+                labels = to_cpu(labels)
+                clear_gpu_memory()
         
         # Save results
         with timed_stage(timer, "Saving Results"):
