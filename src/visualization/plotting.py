@@ -1,4 +1,4 @@
-"""Plotting functions for visualization of results."""
+"""Plotting functions for visualization of results using GridSpec for precise layout control."""
 
 from typing import Union, Tuple, List
 from pathlib import Path
@@ -8,7 +8,7 @@ import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-
+from matplotlib.gridspec import GridSpec
 
 def plot_orthogonal_views(
     raw_data: Union[np.ndarray, cp.ndarray],
@@ -17,7 +17,7 @@ def plot_orthogonal_views(
     output_path: Union[str, Path],
     dpi: int = 300
 ) -> Path:
-    """Plot orthogonal views of the data processing stages.
+    """Plot orthogonal views of the data processing stages using GridSpec for layout control.
 
     Args:
         raw_data: Original image data
@@ -49,51 +49,134 @@ def plot_orthogonal_views(
     if not (raw_data.shape == binary_mask.shape == labels.shape):
         raise ValueError("Input arrays must have the same shape")
     
-    logging.info("Creating figure with 3x3 grid...")
-    # Create figure with 3x3 grid
-    fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+    # Calculate aspect ratios for proper scaling
+    z_size, y_size, x_size = raw_data.shape
+    xy_aspect = x_size / y_size
+    xz_aspect = x_size / z_size
+    yz_aspect = y_size / z_size
+    
+    # Create randomized colormap for labels
+    logging.info("Creating randomized colormap...")
+    n_labels = len(np.unique(labels))
+    
+    # Get tab20 colors (20 distinct colors)
+    tab20_cmap = plt.cm.tab20(np.linspace(0, 1, 20))  # tab20 has 20 colors
+    
+    # Create random color mapping, repeating tab20 colors if needed
+    # but shuffling each set of 20
+    colors = []
+    for i in range(0, n_labels, 20):
+        batch = tab20_cmap.copy()
+        np.random.shuffle(batch)
+        colors.extend(batch)
+    colors = colors[:n_labels]
+    
+    # Ensure background (label 0) is black
+    label_colors = np.zeros((n_labels, 4))  # RGBA array
+    label_colors[1:] = colors[:(n_labels-1)]  # Skip first color (index 0)
+    
+    # Create custom colormap
+    random_cmap = plt.matplotlib.colors.ListedColormap(label_colors)
+    # Calculate optimal figure size based on data dimensions
+    # Let's set a base width in inches for the figure
+    base_width = 15  # inches
+    
+    # Calculate the total height needed based on the data dimensions
+    xy_height = y_size  # Height of top row (XY view)
+    xz_height = z_size  # Height of middle row (XZ view)
+    yz_height = z_size  # Height of bottom row (YZ view)
+    total_relative_height = xy_height + xz_height + yz_height
+    
+    # Scale the figure height to maintain proper data proportions
+    # The 1.1 factor adds a small buffer for titles
+    fig_height = base_width * (total_relative_height / (3 * x_size)) * 1.1
+    
+    # Create figure with calculated dimensions
+    fig = plt.figure(figsize=(base_width, fig_height))
+    
+    # Create GridSpec with custom spacing between rows
+    # Calculate ratios to maintain proper rectangular proportions
+    # For XZ and YZ views, we want to show the full width (x_size or y_size) 
+    # against the z_size while maintaining true proportions
+    xy_height = y_size  # Height of top row (XY view)
+    xz_height = z_size  # Height of middle row (XZ view)
+    yz_height = z_size  # Height of bottom row (YZ view)
+    
+    # Normalize heights to the XY view height
+    height_ratios = [1, xz_height/xy_height, yz_height/xy_height]
+    
+    gs = GridSpec(3, 3, figure=fig,
+                 height_ratios=height_ratios,
+                 width_ratios=[1, 1, 1],
+                 hspace=0.04,  # Small uniform space between rows
+                 wspace=0)
     
     # Get middle indices for each dimension
     z, y, x = [s // 2 for s in raw_data.shape]
     
     logging.info("Plotting XY slices...")
     # Plot XY slices (top row)
-    axes[0, 0].imshow(raw_data[z], cmap='gray')
-    axes[0, 1].imshow(binary_mask[z], cmap='binary')
-    axes[0, 2].imshow(labels[z], cmap='nipy_spectral')
+    ax_xy_raw = fig.add_subplot(gs[0, 0])
+    ax_xy_mask = fig.add_subplot(gs[0, 1])
+    ax_xy_labels = fig.add_subplot(gs[0, 2])
+    
+    ax_xy_raw.imshow(raw_data[z], cmap='gray', aspect='equal')
+    ax_xy_mask.imshow(binary_mask[z], cmap='binary', aspect='equal')
+    ax_xy_labels.imshow(labels[z], cmap=random_cmap, aspect='equal')
     
     logging.info("Plotting XZ slices...")
     # Plot XZ slices (middle row)
-    axes[1, 0].imshow(raw_data[:, y, :], cmap='gray')
-    axes[1, 1].imshow(binary_mask[:, y, :], cmap='binary')
-    axes[1, 2].imshow(labels[:, y, :], cmap='nipy_spectral')
+    ax_xz_raw = fig.add_subplot(gs[1, 0])
+    ax_xz_mask = fig.add_subplot(gs[1, 1])
+    ax_xz_labels = fig.add_subplot(gs[1, 2])
+    
+    # For XZ view, we want width=x_size and height=z_size
+    ax_xz_raw.imshow(raw_data[:, y, :], cmap='gray', aspect='auto')
+    ax_xz_mask.imshow(binary_mask[:, y, :], cmap='binary', aspect='auto')
+    ax_xz_labels.imshow(labels[:, y, :], cmap=random_cmap, aspect='auto')
     
     logging.info("Plotting YZ slices...")
     # Plot YZ slices (bottom row)
-    axes[2, 0].imshow(raw_data[:, :, x], cmap='gray')
-    axes[2, 1].imshow(binary_mask[:, :, x], cmap='binary')
-    axes[2, 2].imshow(labels[:, :, x], cmap='nipy_spectral')
+    ax_yz_raw = fig.add_subplot(gs[2, 0])
+    ax_yz_mask = fig.add_subplot(gs[2, 1])
+    ax_yz_labels = fig.add_subplot(gs[2, 2])
+    
+    # For YZ view, we want width=y_size and height=z_size
+    ax_yz_raw.imshow(raw_data[:, :, x], cmap='gray', aspect='auto')
+    ax_yz_mask.imshow(binary_mask[:, :, x], cmap='binary', aspect='auto')
+    ax_yz_labels.imshow(labels[:, :, x], cmap=random_cmap, aspect='auto')
     
     # Set titles
     titles = ['Raw Data', 'Binary Mask', 'Segmented Particles']
     views = ['XY View', 'XZ View', 'YZ View']
     
-    for i, title in enumerate(titles):
-        axes[0, i].set_title(title)
-    for i, view in enumerate(views):
-        axes[i, 0].set_ylabel(view)
+    for ax, title in zip([ax_xy_raw, ax_xy_mask, ax_xy_labels], titles):
+        ax.set_title(title)
     
-    # Remove ticks
-    for ax in axes.flat:
+    for ax, view in zip([ax_xy_raw, ax_xz_raw, ax_yz_raw], views):
+        ax.set_ylabel(view)
+    
+    # Set black background for label plots
+    ax_xy_labels.set_facecolor('black')
+    ax_xz_labels.set_facecolor('black')
+    ax_yz_labels.set_facecolor('black')
+    
+    # Remove ticks from all axes
+    all_axes = [ax_xy_raw, ax_xy_mask, ax_xy_labels,
+                ax_xz_raw, ax_xz_mask, ax_xz_labels,
+                ax_yz_raw, ax_yz_mask, ax_yz_labels]
+    
+    for ax in all_axes:
         ax.set_xticks([])
         ax.set_yticks([])
     
-    # Adjust layout and save
-    logging.info("Adjusting layout and saving figure...")
-    plt.tight_layout()
+    # Save figure
+    logging.info("Saving figure...")
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+    # Save with small white border
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight', pad_inches=0.1, 
+                facecolor='white', edgecolor='none')
     plt.close()
     
     logging.info(f"Saved orthogonal views to {output_path}")
