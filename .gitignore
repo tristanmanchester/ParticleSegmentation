@@ -24,6 +24,7 @@ wheels/
 .installed.cfg
 *.egg
 *.log
+*.md
 
 # Virtual Environment
 venv/
@@ -45,3 +46,4 @@ Thumbs.db
 *.tiff
 *.png
 output/
+requirements-doc.md
