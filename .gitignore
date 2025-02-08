@@ -47,3 +47,5 @@ Thumbs.db
 *.png
 output/
 requirements-doc.md
+data/
+particle_segmentation.log

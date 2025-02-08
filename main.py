@@ -54,7 +54,7 @@ def main():
         output_path=output_path,
         pixel_size=0.54,  # microns
         particle_size_range=(5.0, 30.0),  # microns
-        binning_factor=2,
+        binning_factor=4,
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
