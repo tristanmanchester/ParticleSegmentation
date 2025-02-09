@@ -69,6 +69,7 @@ def process_chunk(chunk: np.ndarray, structure: np.ndarray, use_gpu: bool) -> np
     else:
         eroded = ndi.binary_erosion(chunk, structure=structure)
         processed = ndi.binary_dilation(eroded, structure=structure)
+        processed = processed.astype(np.uint8)
         return processed
 
 
@@ -132,7 +133,7 @@ def apply_morphological_operations(
         
         # Convert back to GPU if needed
         if use_gpu:
-            processed_mask = cp.asarray(processed_mask)
+            processed_mask = cp.asarray(processed_mask, dtype=cp.uint8)
         
         return processed_mask
     

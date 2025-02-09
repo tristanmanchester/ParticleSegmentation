@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import cupy as cp
 from sklearn.cluster import MiniBatchKMeans
+from tqdm import tqdm
 
 
 def perform_kmeans_clustering(
@@ -74,18 +75,17 @@ def perform_kmeans_clustering(
                 kmeans.fit(subsampled_flat)
             
             logging.info("Cluster centers found. Applying to full dataset...")
-        
+
         # Apply clustering to full dataset
         data_flat = data.reshape(-1, 1)
         n_samples = data_flat.shape[0]
         
         # Process full dataset in batches
         labels = np.empty(n_samples, dtype=np.int32)
-        for i in range(0, n_samples, batch_size):
+        batch_indices = range(0, n_samples, batch_size)
+        for i in tqdm(batch_indices, desc="Clustering", unit="batch"):
             end_idx = min(i + batch_size, n_samples)
             labels[i:end_idx] = kmeans.predict(data_flat[i:end_idx])
-            if i % (100 * batch_size) == 0:  # Reduced logging frequency
-                logging.info(f"Processed {i:,} / {n_samples:,} samples")
         
         # Sort clusters by intensity (ascending)
         centers = kmeans.cluster_centers_.flatten()

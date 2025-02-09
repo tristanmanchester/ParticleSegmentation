@@ -37,7 +37,7 @@ def compute_distance_transform(
             # Use CuPy's implementation
             with timed_stage(timer, "GPU Distance Transform") if timer else nullcontext():
                 report_gpu_memory("Before distance transform")
-                distance = cundi.distance_transform_edt(binary_mask)
+                distance = cundi.distance_transform_edt(binary_mask, float64_distances=False)
                 report_gpu_memory("After distance transform")
                 return distance
     except Exception as e:
