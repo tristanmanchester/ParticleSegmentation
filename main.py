@@ -39,27 +39,32 @@ def setup_logging() -> None:
     )
 
 
-def main():
-    """Main execution function."""
+def main(config: Config = None):
+    """Main execution function.
+    
+    Args:
+        config: Optional Config object. If not provided, default configuration will be used.
+    """
     # Configure logging
     setup_logging()
     
     # Configuration
-    input_path = Path("data/subvolumes")
-    output_path = Path("output")
-    use_gpu = True
-    
-    config = Config(
-        input_path=input_path,
-        output_path=output_path,
-        pixel_size=0.54,  # microns
-        particle_size_range=(5.0, 30.0),  # microns
-        binning_factor=1,
-        n_clusters=3,
-        target_cluster=0,  # 0 = darkest
-        use_gpu=use_gpu,
-        kernel_size=3
-    )
+    if config is None:
+        input_path = Path("data/subvolumes")
+        output_path = Path("output")
+        use_gpu = True
+        
+        config = Config(
+            input_path=input_path,
+            output_path=output_path,
+            pixel_size=0.54,  # microns
+            particle_size_range=(5.0, 30.0),  # microns
+            binning_factor=1,
+            n_clusters=3,
+            target_cluster=0,  # 0 = darkest
+            use_gpu=use_gpu,
+            kernel_size=3
+        )
     
     # Create output directory
     config.output_path.mkdir(parents=True, exist_ok=True)
