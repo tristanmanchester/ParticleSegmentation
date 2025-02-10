@@ -36,7 +36,12 @@ def process_dataset(exp_dir: Path, use_gpu: bool = True) -> None:
     input_path = exp_dir / "trimmed_data" / "volume.tiff"
     output_path = exp_dir / "segmentation"
     
-    # Create Config with paths for this experiment
+    # Check if segmentation folder exists and contains files
+    if output_path.exists() and any(output_path.iterdir()):
+        logging.info(f"Skipping {exp_dir.name}: segmentation already exists")
+        return
+        
+    # Rest of the function remains the same
     config = Config(
         input_path=input_path,
         output_path=output_path,
@@ -46,13 +51,11 @@ def process_dataset(exp_dir: Path, use_gpu: bool = True) -> None:
         n_clusters=3,
         target_cluster=0,  # 0 = darkest
         use_gpu=use_gpu,
-        kernel_size=3
+        kernel_size=4
     )
     
-    # Override sys.argv to pass the config to main
-    sys.argv = [sys.argv[0]]  # Clear any command line arguments
+    sys.argv = [sys.argv[0]]
     
-    # Process this dataset
     logging.info(f"Processing experiment directory: {exp_dir.name}")
     main(config=config)
 
