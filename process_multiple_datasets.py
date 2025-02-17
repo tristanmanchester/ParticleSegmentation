@@ -88,5 +88,5 @@ def process_all_datasets(base_path: str, use_gpu: bool = True) -> None:
 
 if __name__ == "__main__":
     # Example usage:
-    sample_path = "/dls/science/users/qps56811/data/mg40414-1/sample_1"
+    sample_path = "/dls/science/users/qps56811/data/mg40414-1/sample_3"
     process_all_datasets(sample_path)
